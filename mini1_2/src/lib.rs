@@ -29,7 +29,7 @@ impl BigInteger {
         if *self == Self::ZERO {
             0
         } else {
-            self.last_digit() / (self.last_digit()).abs()
+            self.signum
         }
     }
 
@@ -167,6 +167,50 @@ impl Shl<usize> for BigInteger {
     }
 }
 
+impl PartialOrd for BigInteger {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(match (self.clone() - other.clone()).signum() {
+            1 => Ordering::Greater,
+            0 => Ordering::Equal,
+            -1 => Ordering::Less,
+            _ => unsafe { std::hint::unreachable_unchecked() },
+        })
+    }
+}
+
+impl Ord for BigInteger {
+    fn cmp(&self, other: &Self) -> Ordering {
+        unsafe { self.partial_cmp(other).unwrap_unchecked() }
+    }
+}
+
+pub fn division(mut x: BigInteger, y: BigInteger) -> BigInteger {
+    assert!(x.signum() >= 0);
+    assert!(y.signum() > 0);
+    let n = y.len();
+    let m = x.len();
+    if n > m {
+        return BigInteger::ZERO;
+    }
+
+    let mut result = Vec::new();
+    for i in (0..=(m - n)).into_iter().rev() {
+        let z = y.clone() << i;
+        let mut c = 0;
+        while x >= z {
+            x = x - z.clone();
+            c += 1
+        }
+        result.push(c);
+        if x == BigInteger::ZERO {
+            break;
+        }
+    }
+    result.reverse();
+
+    BigInteger::from_parts(result, 1)
+}
+
 macro_rules! big_int {
     ($value:literal) => {
         $value.parse::<BigInteger>().unwrap()
@@ -189,5 +233,13 @@ mod tests {
         assert_eq!(big_int!("-42") * -big_int!("42"), big_int!("1764"));
         assert_eq!(big_int!("0") * big_int!("42"), big_int!("0"));
         assert_eq!(big_int!("42") * big_int!("1764"), big_int!("74088"));
+    }
+
+    #[test]
+    fn div() {
+        assert_eq!(division(big_int!("141"), big_int!("7")), big_int!("20"));
+        assert_eq!(division(big_int!("10"), big_int!("2")), big_int!("5"));
+        assert_eq!(division(big_int!("2"), big_int!("42")), big_int!("0"));
+        assert_eq!(division(big_int!("121"), big_int!("11")), big_int!("11"));
     }
 }
