@@ -45,6 +45,9 @@ mod tests {
         let mut strs = vec!["group", "space", "ring", "field"];
         ascii_radix_sort(&mut strs);
         assert_eq!(strs, vec!["field", "group", "ring", "space"]);
+        let mut strs = vec!["abc", "ab", "a"];
+        ascii_radix_sort(&mut strs);
+        assert_eq!(strs, vec!["a", "ab", "abc"]);
     }
 
     #[test]
