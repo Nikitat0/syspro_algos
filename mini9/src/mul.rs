@@ -1,5 +1,6 @@
-use super::*;
 use std::cmp::*;
+
+use super::*;
 
 pub fn recursive_mul(x: &Matrix, y: &Matrix) -> Matrix {
     let size = size_assert!(x, y);
@@ -36,7 +37,7 @@ pub fn strassen_mul(x: &Matrix, y: &Matrix, fallback: usize) -> Matrix {
 }
 
 fn strassen_mul_impl(x: &Matrix, y: &Matrix, fallback: usize) -> Matrix {
-    if size_assert!(x, y) == fallback {
+    if size_assert!(x, y) <= fallback {
         return x.clone() * y.clone();
     }
 

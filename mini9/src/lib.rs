@@ -13,7 +13,7 @@ pub struct Matrix {
 }
 
 impl Matrix {
-    fn new_zeroed(size: usize) -> Self {
+    pub fn new_zeroed(size: usize) -> Self {
         assert!(size > 0);
         Self { size, elements: vec![0; size * size].into_boxed_slice() }
     }
