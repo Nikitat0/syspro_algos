@@ -1,75 +1,55 @@
 use super::*;
+use std::cmp::*;
 
-pub fn recursive_mul<M1, M2>(x: M1, y: M2) -> Matrix
-where
-    M1: std::borrow::Borrow<Matrix>,
-    M2: std::borrow::Borrow<Matrix>,
-{
-    let mut x = x.borrow().clone();
-    let mut y = y.borrow().clone();
-    let n = x.size_assert(&y);
-    x.expand(1);
-    y.expand(1);
-    let mut prod = recursive_mul_impl(x, y);
-    prod.shrink(n);
-    prod
+pub fn recursive_mul(x: &Matrix, y: &Matrix) -> Matrix {
+    let size = size_assert!(x, y);
+    let new_size = size_for_multiplication(size, 1);
+    recursive_mul_impl(x.expand(new_size).borrow(), y.expand(new_size).borrow())
+        .shrink(size)
 }
 
-pub fn recursive_mul_impl(x: Matrix, y: Matrix) -> Matrix {
-    let n = x.size_assert(&y);
-    if n == 1 {
-        return Matrix {
-            size: 1,
-            elements: vec![x[0][0] * y[0][0]].into_boxed_slice(),
-        };
+fn recursive_mul_impl(x: &Matrix, y: &Matrix) -> Matrix {
+    if x.size == 1 {
+        return x.clone() * y.clone();
     }
 
-    let mut x = x.clone();
-    let mut y = y.clone();
-    x.expand(1);
-    y.expand(1);
     let [a, b, c, d] = x.submatrices();
     let [e, f, g, h] = y.submatrices();
     let blocks = [
-        recursive_mul_impl(a.clone(), e.clone())
-            + recursive_mul_impl(b.clone(), g.clone()),
-        recursive_mul_impl(a, f.clone()) + recursive_mul_impl(b, h.clone()),
-        recursive_mul_impl(c.clone(), e) + recursive_mul_impl(d.clone(), g),
-        recursive_mul_impl(c, f) + recursive_mul_impl(d, h),
+        recursive_mul_impl(&a, &e) + recursive_mul_impl(&b, &g),
+        recursive_mul_impl(&a, &f) + recursive_mul_impl(&b, &h),
+        recursive_mul_impl(&c, &e) + recursive_mul_impl(&d, &g),
+        recursive_mul_impl(&c, &f) + recursive_mul_impl(&d, &h),
     ];
     Matrix::from_blocks(blocks)
 }
 
-pub fn strassen_mul<M1, M2>(x: M1, y: M2, fallback: usize) -> Matrix
-where
-    M1: std::borrow::Borrow<Matrix>,
-    M2: std::borrow::Borrow<Matrix>,
-{
-    let mut x = x.borrow().clone();
-    let mut y = y.borrow().clone();
-    let n = x.size_assert(&y);
-    x.expand(fallback);
-    y.expand(fallback);
-    let mut prod = strassen_mul_impl(x, y, fallback);
-    prod.shrink(n);
-    prod
+pub fn strassen_mul(x: &Matrix, y: &Matrix, fallback: usize) -> Matrix {
+    let size = size_assert!(x, y);
+    let new_size = size_for_multiplication(size, fallback);
+    strassen_mul_impl(
+        x.expand(new_size).borrow(),
+        y.expand(new_size).borrow(),
+        fallback,
+    )
+    .shrink(size)
 }
 
-pub fn strassen_mul_impl(x: Matrix, y: Matrix, fallback: usize) -> Matrix {
-    if x.size_assert(&y) == fallback {
-        return x * y;
+fn strassen_mul_impl(x: &Matrix, y: &Matrix, fallback: usize) -> Matrix {
+    if size_assert!(x, y) == fallback {
+        return x.clone() * y.clone();
     }
 
     let [a, b, c, d] = x.submatrices();
     let [e, f, g, h] = y.submatrices();
     let p: [_; 7] = [
-        strassen_mul_impl(a.clone(), &f - &h, fallback),
-        strassen_mul_impl(&a + &b, h.clone(), fallback),
-        strassen_mul_impl(&c + &d, e.clone(), fallback),
-        strassen_mul_impl(d.clone(), &g - &e, fallback),
-        strassen_mul_impl(&a + &d, &e + &h, fallback),
-        strassen_mul_impl(&b - &d, &g + &h, fallback),
-        strassen_mul_impl(&a - &c, &e + &f, fallback),
+        strassen_mul_impl(&a, (&f - &h).borrow(), fallback),
+        strassen_mul_impl((&a + &b).borrow(), &h, fallback),
+        strassen_mul_impl((&c + &d).borrow(), &e, fallback),
+        strassen_mul_impl(&d, (&g - &e).borrow(), fallback),
+        strassen_mul_impl((&a + &d).borrow(), (&e + &h).borrow(), fallback),
+        strassen_mul_impl((&b - &d).borrow(), (&g + &h).borrow(), fallback),
+        strassen_mul_impl((&a - &c).borrow(), (&e + &f).borrow(), fallback),
     ];
     let blocks = [
         &p[4] + &p[3] - &p[1] + &p[5],
@@ -78,6 +58,14 @@ pub fn strassen_mul_impl(x: Matrix, y: Matrix, fallback: usize) -> Matrix {
         &p[0] + &p[4] - &p[2] - &p[6],
     ];
     Matrix::from_blocks(blocks)
+}
+
+fn size_for_multiplication(size: usize, fallback: usize) -> usize {
+    let mut new_size = min(size, fallback);
+    while new_size < size {
+        new_size *= 2
+    }
+    new_size
 }
 
 #[cfg(test)]
@@ -100,10 +88,10 @@ mod tests {
     fn test_strassen_mul() {
         let a = matrix![[1, 2], [3, 4]];
         let b = matrix![[5, 6], [7, 8]];
-        assert_eq!(strassen_mul(a, b, 1), matrix![[19, 22], [43, 50]]);
-        let a = matrix![[1, 0, 1], [0, 1, 0], [1, 0, 1]];
+        assert_eq!(strassen_mul(&a, &b, 1), matrix![[19, 22], [43, 50]]);
+        let c = matrix![[1, 0, 1], [0, 1, 0], [1, 0, 1]];
         assert_eq!(
-            strassen_mul(&a, &a, 1),
+            strassen_mul(&c, &c, 1),
             matrix![[2, 0, 2], [0, 1, 0], [2, 0, 2]]
         );
     }

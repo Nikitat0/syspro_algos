@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
-use std::cmp::*;
 use std::fmt::{self, Debug};
+use std::mem::{self, MaybeUninit};
 use std::ops::*;
 
 mod mul;
@@ -20,9 +20,12 @@ impl Matrix {
 
     unsafe fn new_uninit(size: usize) -> Self {
         assert!(size > 0);
-        let mut elements = Vec::with_capacity(size * size);
+        let mut elements = Vec::<MaybeUninit<i64>>::with_capacity(size * size);
         elements.set_len(size * size);
-        Self { size, elements: elements.into_boxed_slice() }
+        Self {
+            size,
+            elements: mem::transmute::<_, Vec<_>>(elements).into_boxed_slice(),
+        }
     }
 
     pub fn from_rows(rows: Vec<Vec<i64>>) -> Matrix {
@@ -56,11 +59,6 @@ impl Matrix {
         result
     }
 
-    fn size_assert(&self, other: &Matrix) -> usize {
-        assert_eq!(self.size, other.size);
-        self.size
-    }
-
     pub fn transpose(&mut self) {
         for i in 0..self.size {
             for j in (i + 1)..self.size {
@@ -71,23 +69,20 @@ impl Matrix {
         }
     }
 
-    pub fn expand(&mut self, base: usize) {
-        let n = self.size;
-        let mut m = min(n, base);
-        while m < n {
-            m *= 2;
-        }
+    pub fn expand(&self, new_size: usize) -> Self {
+        assert!(self.size <= new_size);
 
-        let mut expanded = Matrix::new_zeroed(m);
+        let n = self.size;
+        let mut expanded = Matrix::new_zeroed(new_size);
         for i in 0..n {
             for j in 0..n {
                 expanded[i][j] = self[i][j];
             }
         }
-        *self = expanded;
+        expanded
     }
 
-    pub fn shrink(&mut self, new_size: usize) {
+    pub fn shrink(&self, new_size: usize) -> Self {
         assert!(self.size >= new_size);
 
         let mut shrank = Matrix::new_zeroed(new_size);
@@ -96,15 +91,14 @@ impl Matrix {
                 shrank[i][j] = self[i][j];
             }
         }
-        *self = shrank;
+        shrank
     }
 
-    pub fn submatrices(self) -> [Self; 4] {
+    pub fn submatrices(&self) -> [Self; 4] {
         let n = self.size;
         assert!(n % 2 == 0);
 
         (0..4)
-            .into_iter()
             .map(|k| {
                 let sh = (k & 1) * n / 2;
                 let sv = (k >> 1) * n / 2;
@@ -124,8 +118,7 @@ impl Matrix {
 
 impl Debug for Matrix {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let rows: Vec<_> =
-            (0..self.size).into_iter().map(|i| &self[i]).collect();
+        let rows: Vec<_> = (0..self.size).map(|i| &self[i]).collect();
         rows.fmt(f)
     }
 }
@@ -152,10 +145,10 @@ impl<T: Borrow<Matrix>> Add<T> for Matrix {
     fn add(self, rhs: T) -> Self::Output {
         let rhs = rhs.borrow();
 
-        let size = self.size_assert(&rhs);
-        let mut sum = unsafe { Matrix::new_uninit(size) };
-        for i in 0..size {
-            for j in 0..size {
+        let n = size_assert!(self, rhs);
+        let mut sum = unsafe { Matrix::new_uninit(n) };
+        for i in 0..n {
+            for j in 0..n {
                 sum[i][j] = self[i][j] + rhs[i][j];
             }
         }
@@ -191,13 +184,12 @@ impl Mul for Matrix {
     type Output = Matrix;
 
     fn mul(self, mut rhs: Self) -> Self::Output {
-        let size = self.size_assert(&rhs);
+        let size = size_assert!(self, rhs);
         rhs.transpose();
         let mut prod = unsafe { Matrix::new_uninit(self.size) };
         for i in 0..size {
             for j in 0..size {
-                prod[i][j] =
-                    (0..size).into_iter().map(|k| self[i][k] * rhs[j][k]).sum();
+                prod[i][j] = (0..size).map(|k| self[i][k] * rhs[j][k]).sum();
             }
         }
         prod
@@ -220,8 +212,17 @@ impl Mul<i64> for Matrix {
 
 #[macro_export]
 macro_rules! matrix {
-    [$([$($e:literal),+]),*] => (Matrix::from_rows(vec![$(vec![$($e),+]),*]))
+    [$([$($e:literal),+]),*] => ($crate::Matrix::from_rows(::std::vec![$(::std::vec![$($e),+]),*]))
 }
+
+macro_rules! size_assert {
+    ($a:ident, $b:ident) => {{
+        assert_eq!($a.size, $b.size);
+        $a.size
+    }};
+}
+
+use size_assert;
 
 #[cfg(test)]
 mod tests {
@@ -258,19 +259,14 @@ mod tests {
     }
 
     #[test]
-    fn test_expand() {
-        let mut m = matrix![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-        m.expand(1);
+    fn test_expand_shrink() {
+        let a = matrix![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+        let b = a.expand(4);
+        let c = b.shrink(3);
         assert_eq!(
-            m,
+            b,
             matrix![[1, 2, 3, 0], [4, 5, 6, 0], [7, 8, 9, 0], [0, 0, 0, 0]]
-        )
-    }
-
-    #[test]
-    fn test_shrink() {
-        let mut m = matrix![[1, 2, 0], [3, 4, 0], [0, 0, 0]];
-        m.shrink(2);
-        assert_eq!(m, matrix![[1, 2], [3, 4]])
+        );
+        assert_eq!(a, c);
     }
 }
