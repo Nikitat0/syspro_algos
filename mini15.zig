@@ -44,6 +44,8 @@ fn DynamicArray(comptime T: type) type {
             if (self.len == 0)
                 return DynamicArrayError.ArrayIsEmpty;
             self.len -= 1;
+            if (self.len <= (self.data.len / 4))
+                self.data = try self.allocator.realloc(self.data, self.data.len / 2);
             return self.data[self.len];
         }
 
@@ -83,4 +85,20 @@ test "dynamic array realloc" {
         _ = try dyn_arr.pop();
     }
     try testing.expectError(DynamicArrayError.ArrayIsEmpty, dyn_arr.pop());
+}
+
+test "dynamic array shrink" {
+    var dyn_arr = DynamicArray(usize).init(testing.allocator);
+    defer dyn_arr.deinit();
+
+    for (0..15) |i| {
+        try dyn_arr.push(i);
+    }
+    for (0..11) |_| {
+        _ = try dyn_arr.pop();
+    }
+    try testing.expectError(DynamicArrayError.IndexOutOfBounds, dyn_arr.at(4));
+    for (0..3) |_| {
+        _ = try dyn_arr.pop();
+    }
 }
