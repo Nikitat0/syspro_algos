@@ -17,8 +17,9 @@ OPS = {
     "||": (10, False),
 }
 
-if __name__ == "__main__":
-    expr = input().split()
+
+def parse(expr):
+    expr = expr.split()
     expr.reverse()
 
     output = []
@@ -42,4 +43,24 @@ if __name__ == "__main__":
             raise ValueError(f"Unexpected '{tok}'")
 
     output += stack[::-1]
-    print(" ".join(output))
+    return " ".join(output)
+
+
+if __name__ == "__main__":
+    expr = input()
+    print(parse(expr))
+
+
+def test1():
+    assert parse("1 + 2 - 3") == "1 2 + 3 -"
+
+
+def test2():
+    assert parse("2 ** ~ 1") == "2 1 ~ **"
+
+
+def test3():
+    assert parse("2 ** 1 == 1 ** 2 + 1") == "2 1 ** 1 2 ** 1 + =="
+
+def test4():
+    assert parse("1 + 2 - ! ~ 3") == "1 2 + 3 ~ ! -"
