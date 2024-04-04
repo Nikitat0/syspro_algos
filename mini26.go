@@ -47,10 +47,6 @@ func emitImpl(t *TreeNode, seq *[]int) {
 }
 
 func buildTree(seq []int) *TreeNode {
-    return buildTreeImpl(seq, false)
-}
-
-func buildTreeImpl(seq []int, toRight bool) *TreeNode {
     n := len(seq)
     if n == 0 {
         return nil;
@@ -62,18 +58,10 @@ func buildTreeImpl(seq []int, toRight bool) *TreeNode {
             Right: buildTree(seq[n / 2 + 1:]),
         }
     }
-    if toRight {
-        return &TreeNode {
-            Val: seq[n / 2],
-            Left: buildTreeImpl(seq[:n / 2], false),
-            Right: buildTreeImpl(seq[n / 2 + 1:], false),
-        }
-    } else {
-        return &TreeNode {
-            Val: seq[n / 2 - 1],
-            Left: buildTreeImpl(seq[:n / 2 - 1], false),
-            Right: buildTreeImpl(seq[n / 2:], false),
-        }
+    return &TreeNode {
+        Val: seq[n / 2 - 1],
+        Left: buildTree(seq[:n / 2 - 1]),
+        Right: buildTree(seq[n / 2:]),
     }
 }
 
