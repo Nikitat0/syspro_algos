@@ -1,4 +1,4 @@
-package mini28
+package main
 
 import "fmt"
 

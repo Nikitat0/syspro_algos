@@ -1,4 +1,4 @@
-package mini28
+package main
 
 import (
 	"math"
@@ -14,7 +14,7 @@ type Bloom struct {
 func NewBloom(s uint, pr float64) Bloom {
 	var bloom Bloom
 
-	n := uint(float64(s) * math.Log2(pr) / -math.Pow(math.Log(2), 2.0))
+	n := uint(float64(s) * math.Log(pr) / -math.Pow(math.Log(2), 2.0))
 	nbins := n / 64
 	if n%64 != 0 {
 		nbins += 1
@@ -49,7 +49,11 @@ func (b Bloom) Lookup(ip Ip) bool {
 }
 
 func (b Bloom) size() int {
-	return len(b.bins)
+	return len(b.bins) * 64
+}
+
+func (b Bloom) nHashes() int {
+	return len(b.hashes)
 }
 
 func (b Bloom) getBit(n int) bool {
