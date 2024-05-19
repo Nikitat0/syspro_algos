@@ -1,0 +1,4 @@
+Largest recursive component is {bar, foo}
+bar is recursive function
+foo is recursive function
+qux is recursive function

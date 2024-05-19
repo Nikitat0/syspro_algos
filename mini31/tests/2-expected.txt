@@ -1,0 +1,2 @@
+Largest recursive component is {baz}
+baz is recursive function
