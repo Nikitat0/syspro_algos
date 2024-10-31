@@ -14,12 +14,34 @@ pub fn CartesianTree(comptime T: type, comptime op: fn (T, T) T) type {
 
         pub const empty: Self = .{};
 
-        pub fn initSingleton(
+        pub fn initBySlice(
             allocator: Allocator,
             random: Random,
-            value: T,
+            values: []const T,
         ) Allocator.Error!Self {
-            return Self.fromNode(try Node.create(allocator, value, random.int(usize)));
+            return initBySliceImpl(allocator, random, values, 0);
+        }
+
+        fn initBySliceImpl(
+            allocator: Allocator,
+            random: Random,
+            _values: []const T,
+            parent_prio: usize,
+        ) Allocator.Error!Self {
+            var values = _values;
+            if (values.len == 0)
+                return empty;
+            var current = Self.fromNode(try Node.create(allocator, values[0], random.int(usize)));
+            errdefer current.deinit(allocator);
+            values = values[1..];
+            while (current.root.?.priority >= parent_prio) {
+                var next = try initBySliceImpl(allocator, random, values, parent_prio);
+                if (next.size() == 0)
+                    break;
+                values = values[next.size()..];
+                current = current.merge(next);
+            }
+            return current;
         }
 
         fn fromNode(node: ?*Node) Self {
@@ -164,7 +186,7 @@ test "split single" {
 
     const empty = NopTree(u0).empty;
     defer empty.deinit(allocator);
-    const single = try NopTree(u0).initSingleton(allocator, random.random(), 0);
+    const single = try NopTree(u0).initBySlice(allocator, random.random(), &.{0});
     defer single.deinit(allocator);
 
     const split1 = (try single.clone(allocator)).split(0);
@@ -184,7 +206,7 @@ test "merge with empty" {
 
     const empty = NopTree(u0).empty;
     defer empty.deinit(allocator);
-    const single = try NopTree(u0).initSingleton(allocator, random.random(), 0);
+    const single = try NopTree(u0).initBySlice(allocator, random.random(), &.{0});
     defer single.deinit(allocator);
 
     const mergeLeft = empty.merge(try single.clone(allocator));

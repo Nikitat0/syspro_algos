@@ -19,6 +19,18 @@ pub fn CartesianTreeArray(comptime T: type, comptime op: fn (T, T) T) type {
             return .{ .allocator = allocator, .random = random };
         }
 
+        pub fn initBySlice(
+            allocator: Allocator,
+            random: Random,
+            values: []const T,
+        ) Allocator.Error!Self {
+            return .{
+                .allocator = allocator,
+                .random = random,
+                .tree = try Tree.initBySlice(allocator, random, values),
+            };
+        }
+
         pub fn len(self: Self) usize {
             return self.tree.size();
         }
@@ -45,10 +57,9 @@ pub fn CartesianTreeArray(comptime T: type, comptime op: fn (T, T) T) type {
 
         pub fn insert(self: *Self, pos: usize, value: T) Allocator.Error!void {
             assert(pos <= self.len());
-            const new_node = try Tree.initSingleton(self.allocator, self.random, value);
             const parts = self.tree.split(pos);
             self.tree = parts[0]
-                .merge(new_node)
+                .merge(try Tree.initBySlice(self.allocator, self.random, &.{value}))
                 .merge(parts[1]);
         }
 
@@ -133,10 +144,8 @@ test "insert & append & erase & remove" {
     var reference = std.ArrayList(usize).init(allocator);
     try reference.appendSlice(&.{ 2, 5, 7 });
     defer reference.deinit();
-    var tree = CartesianTreeArrayTest.init(allocator, random.random());
+    var tree = try CartesianTreeArrayTest.initBySlice(allocator, random.random(), reference.items);
     defer tree.deinit();
-    for (reference.items) |i|
-        try tree.append(i);
     try expectArray(reference.items, &tree);
 
     try reference.insert(1, 3);
