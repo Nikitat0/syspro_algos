@@ -1,6 +1,7 @@
 const std = @import("std");
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
+const ArrayListUnmanaged = std.ArrayListUnmanaged;
 const Random = std.Random;
 const Tuple = std.meta.Tuple;
 const assert = std.debug.assert;
@@ -19,37 +20,94 @@ pub fn CartesianTree(comptime T: type, comptime op: fn (T, T) T) type {
             random: Random,
             values: []const T,
         ) Allocator.Error!Self {
-            return initBySliceImpl(allocator, random, values, 0);
+            var builder = try Builder.init(allocator, random, values);
+            defer builder.deinit();
+            return builder.build();
         }
 
-        fn initBySliceImpl(
+        const Builder = struct {
             allocator: Allocator,
             random: Random,
-            _values: []const T,
-            parent_prio: usize,
-        ) Allocator.Error!Self {
-            var values = _values;
-            if (values.len == 0)
-                return empty;
-            var current = Self.fromNode(try Node.create(allocator, values[0], random.int(usize)));
-            errdefer current.deinit(allocator);
-            values = values[1..];
-            while (current.root.?.priority >= parent_prio) {
-                var next = try initBySliceImpl(allocator, random, values, parent_prio);
-                if (next.size() == 0)
-                    break;
-                values = values[next.size()..];
-                current = current.merge(next);
+            values: []const T,
+            nodes: ArrayListUnmanaged(*Node),
+
+            pub fn init(
+                allocator: Allocator,
+                random: Random,
+                values: []const T,
+            ) Allocator.Error!Builder {
+                const nodes = try ArrayListUnmanaged(*Node).initCapacity(
+                    allocator,
+                    2 * std.math.log2(values.len),
+                );
+                return .{
+                    .allocator = allocator,
+                    .random = random,
+                    .values = values,
+                    .nodes = nodes,
+                };
             }
-            return current;
-        }
+
+            pub fn build(self: *Builder) Allocator.Error!Self {
+                while (self.nextValue()) |value| {
+                    const node = try Node.create(self.allocator, value, self.random.int(usize));
+                    errdefer node.destroy(self.allocator);
+                    try self.appendNode(node);
+                }
+                if (self.nodes.items.len == 0)
+                    return empty;
+                while (self.nodes.items.len != 1) {
+                    const child = self.nodes.pop();
+                    var parent = self.nodes.getLast();
+                    parent.right = fromNode(child);
+                    parent.update();
+                }
+                return fromNode(self.nodes.pop());
+            }
+
+            fn appendNode(self: *Builder, node: *Node) Allocator.Error!void {
+                while (self.parentPriority() > node.priority) {
+                    const last = self.nodes.pop();
+                    last.right = node.left;
+                    last.update();
+                    node.left = fromNode(last);
+                }
+                node.update();
+                try self.nodes.append(self.allocator, node);
+            }
+
+            fn nextValue(self: *Builder) ?T {
+                if (self.values.len == 0)
+                    return null;
+                defer self.values = self.values[1..];
+                return self.values[0];
+            }
+
+            fn parentPriority(self: *Builder) usize {
+                return if (self.nodes.getLastOrNull()) |last| last.priority else 0;
+            }
+
+            pub fn deinit(self: *Builder) void {
+                for (self.nodes.items) |node|
+                    node.destroy(self.allocator);
+                self.nodes.deinit(self.allocator);
+            }
+        };
 
         fn fromNode(node: ?*Node) Self {
             return .{ .root = node };
         }
 
+        fn update(self: *Self) void {
+            if (self.root) |root| root.update();
+        }
+
+        pub fn isEmpty(self: Self) bool {
+            return self.root == null;
+        }
+
         pub fn size(self: Self) usize {
-            return (self.root orelse return 0).size;
+            return if (self.root) |root| root.size else 0;
         }
 
         pub fn query(self: Self) ?T {
@@ -67,19 +125,18 @@ pub fn CartesianTree(comptime T: type, comptime op: fn (T, T) T) type {
         pub fn merge(self: Self, other: Self) Self {
             const left_root = self.root orelse return other;
             const right_root = other.root orelse return self;
-            return Self.fromNode(left_root.merge(right_root));
+            return fromNode(left_root.merge(right_root));
         }
 
         pub fn split(self: Self, boundary: usize) Tuple(&.{ Self, Self }) {
-            const original_size = self.size();
-            assert(boundary <= original_size);
+            assert(boundary <= self.size());
             const root = self.root orelse return .{ empty, empty };
             const nodes = root.split(boundary);
-            return .{ Self.fromNode(nodes[0]), Self.fromNode(nodes[1]) };
+            return .{ fromNode(nodes[0]), fromNode(nodes[1]) };
         }
 
         pub fn clone(self: Self, allocator: Allocator) Allocator.Error!Self {
-            return if (self.root) |root| Self.fromNode(try root.clone(allocator)) else empty;
+            return if (self.root) |root| fromNode(try root.clone(allocator)) else empty;
         }
 
         pub fn deinit(self: Self, allocator: Allocator) void {
